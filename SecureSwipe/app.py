@@ -111,4 +111,13 @@ elif st.session_state.page == "Dashboard":
         v14 = st.number_input("Anomaly Score (V14)")
         amount = st.number_input("Transaction Amount")
 
-        if st.butt
+        if st.button("Check Transaction"):
+            features = np.zeros(29)
+            features[13] = v14
+            features[28] = amount
+
+            prediction = model.predict([features])[0]
+            if prediction == 1:
+                st.error("🚨 Fraud Detected!")
+            else:
+                st.success("✅ Transaction Safe")
