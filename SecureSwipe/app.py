@@ -4,9 +4,9 @@ import numpy as np
 import json
 import os
 import re 
+from datetime import datetime
 
 # --- 1. DATA PERSISTENCE LAYER ---
-# This ensures users don't have to register every time
 USER_DB = "users_data.json"
 
 def load_data():
@@ -22,36 +22,23 @@ def save_data(data):
     with open(USER_DB, "w") as f:
         json.dump(data, f)
 
-# Initialize database in session state
 if 'db' not in st.session_state:
     st.session_state.db = load_data()
 
 # --- 2. VALIDATION LOGIC ---
 def validate_registration(username, email, password):
-    # Username check: must contain an underscore
     if "_" not in username:
         return False, "Username must contain an underscore (_)."
-    
-    # Email check: must end with @gmail.com
     if not email.lower().endswith("@gmail.com"):
         return False, "Only @gmail.com addresses are accepted."
-    
-    # Password checks: Min 6 chars, Uppercase, Lowercase, Number, Special Char
     if len(password) < 6:
         return False, "Password must be at least 6 characters long."
-    if not re.search(r"[A-Z]", password):
-        return False, "Password must contain at least one uppercase letter."
-    if not re.search(r"[a-z]", password):
-        return False, "Password must contain at least one lowercase letter."
-    # RECTIFIED: Corrected regex for number detection
-    if not re.search(r"[0-9]", password):
-        return False, "Password must contain at least one number."
-    if not re.search(r"[!@#$%^&*(),.?\":{}|<>|]", password):
-        return False, "Password must contain at least one special character."
-    
+    if not (re.search(r"[A-Z]", password) and re.search(r"[a-z]", password) and 
+            re.search(r"[0-9]", password) and re.search(r"[!@#$%^&*(),.?\":{}|<>|]", password)):
+        return False, "Password must contain Mixed Case, Number, and Special Character."
     return True, ""
 
-# --- 3. AI ENGINE (SECURE SWIPE CORE) ---
+# --- 3. AI ENGINE ---
 @st.cache_resource
 def load_secure_swipe_ai():
     url = "https://raw.githubusercontent.com/nsethi31/Kaggle-Data-Credit-Card-Fraud-Detection/master/creditcard.csv"
@@ -78,9 +65,7 @@ def nav(target):
 if st.session_state.page == "Home":
     st.markdown("<h1 style='text-align:center; color:#1a237e;'>🛡️ SECURE SWIPE</h1>", unsafe_allow_html=True)
     st.image("https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=800")
-    st.markdown("### **Smart protection for every transaction.**")
-    st.write("Register once, stay protected forever.")
-    
+    st.markdown("<h3 style='text-align:center;'>Smart protection for every transaction.</h3>", unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
         if st.button("LOGIN", use_container_width=True): nav("Login")
@@ -91,77 +76,51 @@ if st.session_state.page == "Home":
 elif st.session_state.page == "Register":
     st.title("Join Secure Swipe")
     acc_type = st.radio("Account Type", ["User", "Institution"], horizontal=True)
-    
     with st.form("reg_form"):
         fn = st.text_input("Full Name")
         u = st.text_input("Username (must include '_')")
-        e = st.text_input("Email Address (@gmail.com only)")
-        p = st.text_input("Password (min 6 chars, A-z, 0-9, !@#)", type="password")
+        e = st.text_input("Email (@gmail.com)")
+        p = st.text_input("Password", type="password")
         vp = st.text_input("Verify Password", type="password")
-        
         if st.form_submit_button("CREATE ACCOUNT"):
-            is_valid, error_msg = validate_registration(u, e, p)
-            if not fn:
-                st.error("Please enter your Full Name.")
-            elif not is_valid:
-                st.error(error_msg)
-            elif p != vp:
-                st.error("Passwords do not match.")
-            elif u in st.session_state.db:
-                st.error("Username already exists.")
+            valid, msg = validate_registration(u, e, p)
+            if not fn: st.error("Name required.")
+            elif not valid: st.error(msg)
+            elif p != vp: st.error("Passwords mismatch.")
+            elif u in st.session_state.db: st.error("Username taken.")
             else:
-                st.session_state.db[u] = {
-                    "full_name": fn,
-                    "pw": p, 
-                    "email": e, 
-                    "type": acc_type, 
-                    "cards": []
-                }
+                st.session_state.db[u] = {"full_name": fn, "pw": p, "email": e, "type": acc_type, "cards": {}, "history": []}
                 save_data(st.session_state.db)
-                st.success("Account created successfully! You can now login.")
-    
-    if st.button("Already have an account? Login here"): nav("Login")
-    if st.button("← Back to Home"): nav("Home")
+                st.success("Success! Please Login.")
+    if st.button("Already have an account? Login"): nav("Login")
 
 # --- 7. PAGE: LOGIN ---
 elif st.session_state.page == "Login":
     st.title("Secure Access")
     l_u = st.text_input("Username")
     l_p = st.text_input("Password", type="password")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("ENTER SYSTEM"):
-            if l_u in st.session_state.db and st.session_state.db[l_u]['pw'] == l_p:
-                st.session_state.user = l_u
-                nav("Dashboard")
-            else: st.error("Invalid Credentials.")
-    with col2:
-        if st.button("Forgot Password?"): nav("ForgotPassword")
-            
-    st.divider()
-    if st.button("Need an account? Register here"): nav("Register")
-    if st.button("← Back"): nav("Home")
+    if st.button("ENTER SYSTEM"):
+        if l_u in st.session_state.db and st.session_state.db[l_u]['pw'] == l_p:
+            st.session_state.user = l_u
+            nav("Dashboard")
+        else: st.error("Invalid credentials.")
+    if st.button("Forgot Password?"): nav("ForgotPassword")
+    if st.button("Need an account? Register"): nav("Register")
 
 # --- 8. PAGE: FORGOT PASSWORD ---
 elif st.session_state.page == "ForgotPassword":
     st.title("Reset Password")
-    f_u = st.text_input("Enter Username")
-    f_e = st.text_input("Enter Registered Email")
+    f_u = st.text_input("Username")
+    f_e = st.text_input("Email")
     new_p = st.text_input("New Password", type="password")
-    
-    if st.button("Update Password"):
-        is_valid, error_msg = validate_registration(f_u, f_e, new_p)
-        if not is_valid:
-            st.error(error_msg)
-        elif f_u in st.session_state.db and st.session_state.db[f_u]['email'] == f_e:
+    if st.button("Update"):
+        if f_u in st.session_state.db and st.session_state.db[f_u]['email'] == f_e:
             st.session_state.db[f_u]['pw'] = new_p
             save_data(st.session_state.db)
-            st.success("Password updated! Go to login.")
+            st.success("Updated!")
             nav("Login")
-        else:
-            st.error("Account details do not match.")
-    if st.button("← Back to Login"): nav("Login")
+        else: st.error("Details mismatch.")
+    if st.button("Back to Login"): nav("Login")
 
 # --- 9. PAGE: DASHBOARD ---
 elif st.session_state.page == "Dashboard":
@@ -169,34 +128,75 @@ elif st.session_state.page == "Dashboard":
     u_data = st.session_state.db[u]
     st.title(f"🛡️ Welcome, {u_data.get('full_name', u)}")
     
-    st.sidebar.write(f"Account: **{u}**")
-    if st.sidebar.button("LOGOUT"):
-        st.session_state.user = None
-        nav("Home")
-    
+    # Sidebar
+    st.sidebar.button("LOGOUT", on_click=lambda: nav("Home"))
     if st.sidebar.button("❌ DELETE ACCOUNT"):
         del st.session_state.db[u]
         save_data(st.session_state.db)
         st.session_state.user = None
-        st.warning("Account Deleted.")
         nav("Home")
 
-    t1, t2 = st.tabs(["Cards", "Scanner"])
+    t1, t2, t3 = st.tabs(["💳 My Cards", "🔍 AI Scanner", "📜 History"])
+    
     with t1:
-        c_add = st.text_input("Add Card (Last 4 digits)")
-        if st.button("Protect"):
-            st.session_state.db[u]['cards'].append(c_add)
-            save_data(st.session_state.db)
-            st.success("Card Saved Permanently.")
-        st.write("Protected Cards:", st.session_state.db[u]['cards'])
+        st.subheader("Manage Secure Assets")
+        with st.expander("➕ Add New Card"):
+            c_num = st.text_input("Card Number (Last 4 digits)", max_chars=4)
+            c_lim = st.number_input("Transaction Limit ($)", min_value=1.0, value=500.0)
+            if st.button("Secure This Card"):
+                st.session_state.db[u]['cards'][c_num] = c_lim
+                save_data(st.session_state.db)
+                st.success(f"Card {c_num} protected with ${c_lim} limit.")
         
+        # Display Cards visually
+        cols = st.columns(2)
+        for i, (num, lim) in enumerate(st.session_state.db[u]['cards'].items()):
+            with cols[i % 2]:
+                st.markdown(f"""
+                <div style="background: linear-gradient(45deg, #1a237e, #3949ab); padding: 20px; border-radius: 15px; color: white; margin-bottom: 10px;">
+                    <p style="font-size: 0.8em; margin: 0;">SECURE SWIPE ASSET</p>
+                    <h2 style="margin: 10px 0;">**** **** **** {num}</h2>
+                    <p style="margin: 0; font-size: 0.9em;">LIMIT: ${lim}</p>
+                    <p style="text-align: right; font-size: 0.7em; color: #81c784;">● ACTIVE PROTECTION</p>
+                </div>
+                """, unsafe_allow_html=True)
+
     with t2:
-        st.subheader("AI Fraud Scan")
+        st.subheader("Real-Time Security Scan")
+        selected_card = st.selectbox("Select Card for Scan", list(st.session_state.db[u]['cards'].keys()))
         v14 = st.number_input("Anomaly Factor (V14)", value=0.0)
-        amt = st.number_input("Amount ($)", value=0.0)
-        if st.button("VALIDATE"):
-            feats = np.zeros(29); feats[13], feats[28] = v14, amt
-            if model.predict([feats])[0] == 1:
-                st.error("🚨 FRAUD DETECTED!")
+        amt = st.number_input("Transaction Amount ($)", min_value=0.01)
+        
+        if st.button("RUN SECURITY CHECK"):
+            limit = st.session_state.db[u]['cards'][selected_card]
+            status = ""
+            
+            # Check Limit First
+            if amt > limit:
+                st.error(f"🚨 ALERT: Transaction of ${amt} exceeds your set limit of ${limit}!")
+                status = "DECLINED (Limit Exceeded)"
             else:
-                st.success("✅ SAFE")
+                feats = np.zeros(29); feats[13], feats[28] = v14, amt
+                if model.predict([feats])[0] == 1:
+                    st.error("🚨 FRAUD DETECTED: Pattern analysis suggests high risk.")
+                    status = "DECLINED (AI Fraud)"
+                else:
+                    st.success("✅ TRANSACTION VERIFIED: Within safe parameters.")
+                    status = "APPROVED"
+            
+            # Save to History
+            st.session_state.db[u]['history'].append({
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "card": f"**** {selected_card}",
+                "amount": f"${amt}",
+                "status": status
+            })
+            save_data(st.session_state.db)
+
+    with t3:
+        st.subheader("Activity Log")
+        if st.session_state.db[u]['history']:
+            df_hist = pd.DataFrame(st.session_state.db[u]['history'])
+            st.table(df_hist.iloc[::-1]) # Show newest first
+        else:
+            st.info("No transaction history yet.")
