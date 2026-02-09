@@ -3,21 +3,26 @@ import pandas as pd
 import numpy as np
 import json
 import os
-import re  # Added for validation logic
+import re 
 
 # --- 1. DATA PERSISTENCE LAYER ---
+# This ensures users don't have to register every time
 USER_DB = "users_data.json"
 
 def load_data():
     if os.path.exists(USER_DB):
-        with open(USER_DB, "r") as f:
-            return json.load(f)
+        try:
+            with open(USER_DB, "r") as f:
+                return json.load(f)
+        except:
+            return {}
     return {}
 
 def save_data(data):
     with open(USER_DB, "w") as f:
         json.dump(data, f)
 
+# Initialize database in session state
 if 'db' not in st.session_state:
     st.session_state.db = load_data()
 
@@ -38,14 +43,15 @@ def validate_registration(username, email, password):
         return False, "Password must contain at least one uppercase letter."
     if not re.search(r"[a-z]", password):
         return False, "Password must contain at least one lowercase letter."
-    if not re.search(r"\[0-9\]", password):
+    # RECTIFIED: Corrected regex for number detection
+    if not re.search(r"[0-9]", password):
         return False, "Password must contain at least one number."
     if not re.search(r"[!@#$%^&*(),.?\":{}|<>|]", password):
         return False, "Password must contain at least one special character."
     
     return True, ""
 
-# --- 3. AI ENGINE ---
+# --- 3. AI ENGINE (SECURE SWIPE CORE) ---
 @st.cache_resource
 def load_secure_swipe_ai():
     url = "https://raw.githubusercontent.com/nsethi31/Kaggle-Data-Credit-Card-Fraud-Detection/master/creditcard.csv"
@@ -73,6 +79,7 @@ if st.session_state.page == "Home":
     st.markdown("<h1 style='text-align:center; color:#1a237e;'>🛡️ SECURE SWIPE</h1>", unsafe_allow_html=True)
     st.image("https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=800")
     st.markdown("### **Smart protection for every transaction.**")
+    st.write("Register once, stay protected forever.")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -86,23 +93,32 @@ elif st.session_state.page == "Register":
     acc_type = st.radio("Account Type", ["User", "Institution"], horizontal=True)
     
     with st.form("reg_form"):
+        fn = st.text_input("Full Name")
         u = st.text_input("Username (must include '_')")
-        e = st.text_input("Email Address (must be @gmail.com)")
-        p = st.text_input("Password (min 6 chars, mixed case, number, symbol)", type="password")
+        e = st.text_input("Email Address (@gmail.com only)")
+        p = st.text_input("Password (min 6 chars, A-z, 0-9, !@#)", type="password")
         vp = st.text_input("Verify Password", type="password")
         
         if st.form_submit_button("CREATE ACCOUNT"):
             is_valid, error_msg = validate_registration(u, e, p)
-            if not is_valid:
+            if not fn:
+                st.error("Please enter your Full Name.")
+            elif not is_valid:
                 st.error(error_msg)
             elif p != vp:
                 st.error("Passwords do not match.")
             elif u in st.session_state.db:
                 st.error("Username already exists.")
             else:
-                st.session_state.db[u] = {"pw": p, "email": e, "type": acc_type, "cards": []}
+                st.session_state.db[u] = {
+                    "full_name": fn,
+                    "pw": p, 
+                    "email": e, 
+                    "type": acc_type, 
+                    "cards": []
+                }
                 save_data(st.session_state.db)
-                st.success("Account created successfully!")
+                st.success("Account created successfully! You can now login.")
     
     if st.button("Already have an account? Login here"): nav("Login")
     if st.button("← Back to Home"): nav("Home")
@@ -141,7 +157,7 @@ elif st.session_state.page == "ForgotPassword":
         elif f_u in st.session_state.db and st.session_state.db[f_u]['email'] == f_e:
             st.session_state.db[f_u]['pw'] = new_p
             save_data(st.session_state.db)
-            st.success("Password updated!")
+            st.success("Password updated! Go to login.")
             nav("Login")
         else:
             st.error("Account details do not match.")
@@ -151,9 +167,9 @@ elif st.session_state.page == "ForgotPassword":
 elif st.session_state.page == "Dashboard":
     u = st.session_state.user
     u_data = st.session_state.db[u]
-    st.title(f"🛡️ {u_data['type']} Dashboard")
+    st.title(f"🛡️ Welcome, {u_data.get('full_name', u)}")
     
-    st.sidebar.write(f"Logged in: **{u}**")
+    st.sidebar.write(f"Account: **{u}**")
     if st.sidebar.button("LOGOUT"):
         st.session_state.user = None
         nav("Home")
@@ -162,6 +178,7 @@ elif st.session_state.page == "Dashboard":
         del st.session_state.db[u]
         save_data(st.session_state.db)
         st.session_state.user = None
+        st.warning("Account Deleted.")
         nav("Home")
 
     t1, t2 = st.tabs(["Cards", "Scanner"])
@@ -171,11 +188,12 @@ elif st.session_state.page == "Dashboard":
             st.session_state.db[u]['cards'].append(c_add)
             save_data(st.session_state.db)
             st.success("Card Saved Permanently.")
-        st.write("Your Cards:", st.session_state.db[u]['cards'])
+        st.write("Protected Cards:", st.session_state.db[u]['cards'])
         
     with t2:
-        v14 = st.number_input("Anomaly Factor", value=0.0)
-        amt = st.number_input("Amount", value=0.0)
+        st.subheader("AI Fraud Scan")
+        v14 = st.number_input("Anomaly Factor (V14)", value=0.0)
+        amt = st.number_input("Amount ($)", value=0.0)
         if st.button("VALIDATE"):
             feats = np.zeros(29); feats[13], feats[28] = v14, amt
             if model.predict([feats])[0] == 1:
